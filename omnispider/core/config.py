@@ -81,6 +81,26 @@ class ApiConfig(BaseModel):
     port: int = 8080
 
 
+class SecurityConfig(BaseModel):
+    enabled: bool = True
+    dev_mode: bool = True
+    require_auth: bool = False
+    require_client_allowlist: bool = False
+    client_allowlist: list[str] = Field(default_factory=list)
+    api_keys: list[str] = Field(default_factory=list)
+    audit_log_dir: str = "./data/audit"
+    audit_chain_key: str = ""
+    max_connections: int = 64
+    max_requests_per_minute: int = 120
+    max_requests_per_client_per_minute: int = 60
+    max_body_bytes: int = 1_048_576
+    replay_max_clock_skew_ms: int = 60_000
+    replay_nonce_ttl_ms: int = 120_000
+    block_private_ips: bool = True
+    block_link_local: bool = True
+    organism_pulse_seconds: int = 30
+
+
 class VendorsConfig(BaseModel):
     path: str = "./vendors"
 
@@ -93,6 +113,7 @@ class AppConfig(BaseModel):
     archive: ArchiveConfig = Field(default_factory=ArchiveConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
     vendors: VendorsConfig = Field(default_factory=VendorsConfig)
 
 

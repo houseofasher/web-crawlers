@@ -11,6 +11,9 @@ import uvicorn
 from omnispider.core.config import load_config
 from omnispider.core.models import CrawlJobSpec, EngineType
 from omnispider.core.orchestrator import Orchestrator
+from omnispider.security.auth import ApiKeyRegistry
+from omnispider.security.nomad_stack import build_security_stack
+from omnispider.security.rbac import Role
 
 structlog.configure(
     processors=[
@@ -59,9 +62,14 @@ def crawl(
     )
 
     async def _main() -> None:
-        orchestrator = Orchestrator(cfg)
+        security = build_security_stack(cfg) if cfg.security.enabled else None
+        orchestrator = Orchestrator(cfg, security=security)
         await orchestrator.initialize()
-        job = await orchestrator.submit_job(spec)
+        try:
+            job = await orchestrator.submit_job(spec)
+        except ValueError as exc:
+            typer.echo(f"Blocked: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
         typer.echo(f"Job {job.id} started — seeds: {', '.join(seeds)}")
         if wait:
             task = asyncio.current_task()
@@ -198,6 +206,40 @@ def engines_list() -> None:
     ]
     for name, desc, vendor in rows:
         typer.echo(f"{name:14} {desc:42} [{vendor}]")
+
+
+security_app = typer.Typer(help="Nomad Cyber security utilities")
+app.add_typer(security_app, name="security")
+
+
+@security_app.command("generate-key")
+def security_generate_key(
+    role: str = typer.Option("operator", "--role", "-r", help="viewer|operator|admin|sovereign"),
+) -> None:
+    """Generate an API key hash entry for config security.api_keys."""
+    try:
+        parsed_role = Role(role.lower())
+    except ValueError:
+        typer.echo(f"Invalid role: {role}", err=True)
+        raise typer.Exit(code=1)
+    raw, config_entry = ApiKeyRegistry.generate_key(parsed_role)
+    typer.echo(f"API Key (save now — shown once):\n  {raw}\n")
+    typer.echo(f"Add to config/default.yaml under security.api_keys:\n  - \"{config_entry}\"")
+
+
+@security_app.command("vitals")
+def security_vitals(config: Optional[Path] = typer.Option(None, "--config", "-c")) -> None:
+    """Print Sovereign Organism security vitals."""
+    cfg = load_config(config)
+    stack = build_security_stack(cfg)
+    report = stack.vital_guard.get_vitals_report()
+    typer.echo(f"Vital: {report.vital}")
+    typer.echo(f"Pulse: {report.pulse_generation}")
+    typer.echo(f"Fingerprint: {report.organism_fingerprint}")
+    if report.lockdown_reason:
+        typer.echo(f"Lockdown: {report.lockdown_reason}")
+    for organ in report.organs:
+        typer.echo(f"  [{organ.state}] {organ.name} — {organ.role}")
 
 
 if __name__ == "__main__":

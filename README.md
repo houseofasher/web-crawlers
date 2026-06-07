@@ -384,6 +384,63 @@ web-crawlers/
 
 ---
 
+## Nomad Cyber security
+
+Omnispider integrates the **[Nomad Cyber Algorithm](https://github.com/ZorakCorp/nomad_cyber_algorithm)** sovereign security stack — adapted from its gateway, audit, replay, and organism patterns.
+
+```mermaid
+flowchart TB
+    subgraph perimeter [API Perimeter]
+        HDR[OWASP Security Headers]
+        RL[Rate Limiter]
+        RBAC[RBAC + API Keys]
+        RG[Replay Guard]
+    end
+
+    subgraph organism [Sovereign Organism]
+        AUDIT["Audit Immune<br/>HMAC chain"]
+        VITAL["Vital Guard<br/>pulse every 30s"]
+        SSRF["SSRF Lungs<br/>block private IPs"]
+    end
+
+    REQ[API Request] --> HDR --> RL --> RBAC --> RG
+    RG --> VITAL
+    VITAL -->|vital| HANDLER[Crawl Handler]
+    VITAL -->|lockdown| BLOCK[503 ORGANISM_LOCKDOWN]
+    HANDLER --> SSRF
+    SSRF --> AUDIT
+    HANDLER --> CRAWL[Orchestrator]
+```
+
+| Organ | Protection |
+|-------|------------|
+| **Gateway Skin** | RBAC roles, bearer API keys, body limits |
+| **Replay Nerves** | `X-Nonce` + `X-Timestamp` on `POST /v1/jobs` |
+| **SSRF Lungs** | Blocks localhost, private IPs, metadata endpoints in crawl targets |
+| **Audit Immune** | Tamper-evident HMAC-chained JSONL log |
+| **Sovereign Organism** | All organs vital or total API lockdown |
+
+```bash
+# Generate production API key
+omnispider security generate-key --role admin
+
+# Check organism vitals
+omnispider security vitals
+curl http://127.0.0.1:8080/organism/vitals
+
+# Authenticated crawl job (production)
+curl -X POST http://127.0.0.1:8080/v1/jobs \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "X-Nonce: $(uuidgen)" \
+  -H "X-Timestamp: $(date +%s000)" \
+  -H "Content-Type: application/json" \
+  -d '{"seeds":["https://example.com"],"max_depth":2,"max_pages":50}'
+```
+
+See [SECURITY.md](SECURITY.md) for production hardening checklist.
+
+---
+
 ## Repositories
 
 This project is maintained at:

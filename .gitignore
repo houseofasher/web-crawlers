@@ -13,6 +13,7 @@ data/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+_review/
 node_modules/
 
 # Vendor source trees are large third-party references — extract locally (see vendors/README.md)

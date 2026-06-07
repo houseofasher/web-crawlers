@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omnispider"
-version = "0.1.0"
+version = "0.2.0"
 description = "All-in-one web spider orchestrator unifying multiple crawl engines"
 readme = "README.md"
 requires-python = ">=3.11"

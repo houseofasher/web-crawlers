@@ -1,0 +1,29 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: ruff check omnispider tests
+
+      - name: Unit tests (incl. security)
+        run: pytest -q
+
+      - name: SSRF guard smoke test
+        run: python -c "from omnispider.security.ssrf_guard import SSRFGuard; g=SSRFGuard(); assert not g.validate_url('http://127.0.0.1')[0]"

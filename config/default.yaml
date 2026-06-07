@@ -59,5 +59,24 @@ api:
   host: "127.0.0.1"
   port: 8080
 
+security:
+  enabled: true
+  dev_mode: true
+  require_auth: false
+  require_client_allowlist: false
+  client_allowlist: []
+  api_keys: []
+  audit_log_dir: "./data/audit"
+  audit_chain_key: ""
+  max_connections: 64
+  max_requests_per_minute: 120
+  max_requests_per_client_per_minute: 60
+  max_body_bytes: 1048576
+  replay_max_clock_skew_ms: 60000
+  replay_nonce_ttl_ms: 120000
+  block_private_ips: true
+  block_link_local: true
+  organism_pulse_seconds: 30
+
 vendors:
   path: "./vendors"

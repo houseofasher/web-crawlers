@@ -32,6 +32,8 @@ from omnispider.discovery.links import (
     extract_links,
 )
 from omnispider.engines.registry import EngineRegistry
+from omnispider.security.audit_log import AuditEventType
+from omnispider.security.nomad_stack import NomadSecurityStack
 
 log = structlog.get_logger()
 
@@ -39,8 +41,9 @@ log = structlog.get_logger()
 class Orchestrator:
     """Unified crawl orchestrator spanning live web, archives, and multi-engine rendering."""
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, security: NomadSecurityStack | None = None) -> None:
         self._config = config
+        self._security = security
         self._storage = Storage(config)
         self._engines = EngineRegistry(config)
         from omnispider.core.policy import CrawlPolicy
@@ -61,10 +64,30 @@ class Orchestrator:
         job_id = str(uuid.uuid4())
         return CrawlJob(id=job_id, **spec.model_dump())
 
-    async def submit_job(self, spec: CrawlJobSpec) -> CrawlJob:
+    async def submit_job(
+        self, spec: CrawlJobSpec, *, correlation_id: str | None = None
+    ) -> CrawlJob:
+        if self._security:
+            blocked = self._security.ssrf_guard.validate_many(spec.seeds)
+            if blocked:
+                for url, reason in blocked:
+                    self._security.audit.record(
+                        AuditEventType.SSRF_BLOCKED,
+                        correlation_id=correlation_id,
+                        detail=f"{url} — {reason}",
+                    )
+                raise ValueError(f"SSRF blocked: {blocked[0][0]} ({blocked[0][1]})")
+            self._security.vital_guard.require_vital("submit_job")
+
         job = self.create_job(spec)
         await self._storage.create_job(job)
-        task = asyncio.create_task(self._run_job(job))
+        if self._security:
+            self._security.audit.record(
+                AuditEventType.JOB_STARTED,
+                correlation_id=correlation_id,
+                detail=f"job={job.id} seeds={len(spec.seeds)}",
+            )
+        task = asyncio.create_task(self._run_job(job, correlation_id=correlation_id))
         self._active_jobs[job.id] = task
         task.add_done_callback(lambda _: self._active_jobs.pop(job.id, None))
         return job
@@ -137,7 +160,7 @@ class Orchestrator:
         await self._storage.enqueue_frontier(job.id, entries)
         log.info("frontier_seeded", job_id=job.id, entries=len(entries))
 
-    async def _run_job(self, job: CrawlJob) -> None:
+    async def _run_job(self, job: CrawlJob, *, correlation_id: str | None = None) -> None:
         job.status = CrawlStatus.RUNNING
         job.started_at = datetime.utcnow()
         await self._storage.update_job(job)
@@ -166,6 +189,19 @@ class Orchestrator:
         finally:
             job.finished_at = datetime.utcnow()
             await self._storage.update_job(job)
+            if self._security:
+                if job.status == CrawlStatus.COMPLETED:
+                    self._security.audit.record(
+                        AuditEventType.JOB_COMPLETED,
+                        correlation_id=correlation_id,
+                        detail=f"job={job.id} pages={job.pages_crawled}",
+                    )
+                elif job.status == CrawlStatus.FAILED:
+                    self._security.audit.record(
+                        AuditEventType.JOB_FAILED,
+                        correlation_id=correlation_id,
+                        detail=f"job={job.id} error={job.error}",
+                    )
 
     async def _worker(self, job: CrawlJob, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> None:
         seed_url = normalize_url(job.seeds[0])
@@ -201,6 +237,15 @@ class Orchestrator:
                 await self._storage.mark_frontier_done(job.id, entry.url, entry.archive_timestamp)
                 await self._storage.update_job(job)
                 continue
+
+            if self._security and entry.source == PageSource.LIVE:
+                ok, ssrf_reason = self._security.ssrf_guard.validate_url(entry.url)
+                if not ok:
+                    log.debug("ssrf_blocked", url=entry.url, reason=ssrf_reason)
+                    job.pages_failed += 1
+                    await self._storage.mark_frontier_done(job.id, entry.url, entry.archive_timestamp)
+                    await self._storage.update_job(job)
+                    continue
 
             async with sem:
                 async with self._page_limit_lock:
@@ -291,6 +336,14 @@ class Orchestrator:
         await self._storage.save_page(job.id, page)
 
         if entry.depth < job.max_depth and entry.source == PageSource.LIVE:
+            safe_links: list[str] = []
+            if self._security:
+                for link in links[:200]:
+                    ok, _ = self._security.ssrf_guard.validate_url(link)
+                    if ok:
+                        safe_links.append(link)
+            else:
+                safe_links = links[:200]
             child_entries = [
                 FrontierEntry(
                     url=link,
@@ -298,7 +351,7 @@ class Orchestrator:
                     source=PageSource.LIVE,
                     priority=50 - entry.depth,
                 )
-                for link in links[:200]
+                for link in safe_links
             ]
             await self._storage.enqueue_frontier(job.id, child_entries)
 
