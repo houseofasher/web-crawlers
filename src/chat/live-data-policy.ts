@@ -43,6 +43,44 @@ export function isLiveHttpUrl(url: string): boolean {
   }
 }
 
+/** Hosts that must never enter educational corpus (redirect/social drift). */
+const DRIFT_BLOCKED_HOSTS = new Set([
+  "github.com",
+  "gitlab.com",
+  "bitbucket.org",
+  "youtube.com",
+  "youtu.be",
+  "twitter.com",
+  "x.com",
+  "facebook.com",
+  "instagram.com",
+  "tiktok.com",
+  "reddit.com",
+  "linkedin.com",
+]);
+
+export function hostFromUrl(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+export function isDriftBlockedHost(host: string): boolean {
+  const h = host.replace(/^www\./, "").toLowerCase();
+  if (DRIFT_BLOCKED_HOSTS.has(h)) return true;
+  return [...DRIFT_BLOCKED_HOSTS].some((blocked) => h.endsWith(`.${blocked}`));
+}
+
+export function isHostAllowed(url: string, allowedDomains: string[] | null | undefined): boolean {
+  const host = hostFromUrl(url);
+  if (!host) return false;
+  if (isDriftBlockedHost(host)) return false;
+  if (!allowedDomains?.length) return isLiveHttpUrl(url);
+  return allowedDomains.some((d) => host === d || host.endsWith(`.${d}`));
+}
+
 export function assertLiveSeeds(seeds: string[]): string[] {
   const live = seeds.map((s) => s.trim()).filter(Boolean);
   if (!live.length) {
@@ -68,9 +106,14 @@ export function isLivePage(page: PageRecord): boolean {
 /** Convert crawled pages to chat corpus — live web only, never archive or local files. */
 export function pagesToLiveDocuments(
   pages: Array<PageRecord & { text: string }>,
+  allowedDomains?: string[] | null,
 ): ChatDocument[] {
   return pages
-    .filter((p) => isLivePage(p) && p.text.length >= 80)
+    .filter((p) => {
+      if (!isLivePage(p) || p.text.length < 80) return false;
+      const url = p.finalUrl ?? p.url;
+      return isHostAllowed(url, allowedDomains);
+    })
     .map((p) => ({
       text: p.text,
       url: p.finalUrl ?? p.url,

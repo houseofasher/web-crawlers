@@ -226,7 +226,8 @@ export async function startApi(config: AppConfig, host: string, port: number): P
         Number(body.pageLimit ?? 50),
         0,
       );
-      const livePages = pagesToLiveDocuments(pages);
+      const allowed = allowedDomainsFromSeeds(seeds);
+      const livePages = pagesToLiveDocuments(pages, allowed);
       const documents = livePages.map((p) => ({
         text: p.text,
         url: p.url,

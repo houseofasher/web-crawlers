@@ -21,7 +21,6 @@ computer_science:
   seeds:
     - https://www.britannica.com/
     - https://arxiv.org/
-    - https://paperswithcode.com/
 
 biology:
   seeds:

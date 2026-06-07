@@ -12,6 +12,7 @@ import {
   normalizeUrl,
   saveContent,
 } from "./policy.js";
+import { isHostAllowed } from "../chat/live-data-policy.js";
 import { Storage, createJobFromSpec } from "./storage.js";
 import {
   discoverRobotsSitemaps,
@@ -297,6 +298,10 @@ export class Orchestrator {
 
     if (!fetchOk(result) || !result.body.length) return null;
 
+    if (job.allowedDomains?.length && !isHostAllowed(result.finalUrl, job.allowedDomains)) {
+      return null;
+    }
+
     let html = result.body.toString("utf8");
     if (entry.source === "live" && !(job.jsRendering ?? false) && needsJsRendering(html)) {
       const retry = await this.engines.get("playwright").fetch(entry.url, { source: entry.source });
@@ -344,6 +349,7 @@ export class Orchestrator {
       if (topicProfile && job.topicFollowRelated) {
         for (const link of extractProfileUrlsFromHtml(html, result.finalUrl, topicProfile)) {
           if (isTopicNoiseUrl(link)) continue;
+          if (job.allowedDomains?.length && !isHostAllowed(link, job.allowedDomains)) continue;
           if (this.security && !this.security.ssrfGuard.validateUrl(link).ok) continue;
           childEntries.push({
             url: link,
@@ -358,6 +364,7 @@ export class Orchestrator {
           ? (job.topicMinLinkScore ?? 0.1) * 0.6
           : (job.topicMinLinkScore ?? 0.1);
         for (const [link, anchor] of extractLinksWithText(html, result.finalUrl)) {
+          if (job.allowedDomains?.length && !isHostAllowed(link, job.allowedDomains)) continue;
           if (!shouldFollowTopicLink(link, anchor, topicProfile, linkThreshold)) continue;
           if (this.security && !this.security.ssrfGuard.validateUrl(link).ok) continue;
           const linkScore = scoreLink(link, anchor, topicProfile);
@@ -370,6 +377,7 @@ export class Orchestrator {
         }
       } else {
         for (const link of links.slice(0, linkCap)) {
+          if (job.allowedDomains?.length && !isHostAllowed(link, job.allowedDomains)) continue;
           if (this.security && !this.security.ssrfGuard.validateUrl(link).ok) continue;
           childEntries.push({
             url: link,

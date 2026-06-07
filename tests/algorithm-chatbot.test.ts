@@ -69,6 +69,40 @@ describe("live-data-policy", () => {
     expect(docs[0].source).toBe("live");
     expect(docs[0].url).toContain("arxiv.org");
   });
+
+  it("pagesToLiveDocuments blocks github redirect drift", () => {
+    const docs = pagesToLiveDocuments(
+      [
+        {
+          url: "https://github.com/foo/bar",
+          finalUrl: "https://github.com/foo/bar",
+          title: "Repo",
+          depth: 0,
+          source: "live",
+          engine: "http",
+          fetchedAt: "2026-06-07T12:00:00.000Z",
+          linksFound: 0,
+          metadata: {},
+          text: "A".repeat(120),
+        },
+        {
+          url: "https://www.britannica.com/topic/algorithm",
+          finalUrl: "https://www.britannica.com/topic/algorithm",
+          title: "Algorithm",
+          depth: 0,
+          source: "live",
+          engine: "http",
+          fetchedAt: "2026-06-07T12:00:00.000Z",
+          linksFound: 0,
+          metadata: {},
+          text: "An algorithm is a systematic procedure for solving a problem or accomplishing a task.",
+        },
+      ],
+      ["britannica.com"],
+    );
+    expect(docs).toHaveLength(1);
+    expect(docs[0].url).toContain("britannica.com");
+  });
 });
 
 describe("algorithm-chatbot", () => {

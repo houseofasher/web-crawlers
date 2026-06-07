@@ -80,7 +80,8 @@ async function crawlLiveDocuments(
   }
 
   const pages = orchestrator.listPagesWithText(job.id, req.maxPages ?? 15, 0);
-  const documents = pagesToLiveDocuments(pages);
+  const allowed = allowedDomainsFromSeeds(seeds);
+  const documents = pagesToLiveDocuments(pages, allowed);
   if (!documents.length) {
     throw new Error("LIVE_DATA_REQUIRED — crawl completed but no live web pages were retrieved");
   }
