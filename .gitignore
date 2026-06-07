@@ -1,21 +1,24 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-.eggs/
+# Dependencies
+node_modules/
 dist/
-build/
+
+# Legacy Python artifacts (safe to delete locally)
 .venv/
 venv/
-.env
+__pycache__/
+*.egg-info/
+
+# Data & secrets
 data/
 *.db
 *.log
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-_review/
-node_modules/
+.env
 
-# Vendor source trees are large third-party references — extract locally (see vendors/README.md)
+# Review / vendor trees
+_review/
 vendors/*
 !vendors/README.md
+
+# OS
+.DS_Store
+Thumbs.db

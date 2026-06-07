@@ -8,8 +8,9 @@
 
 <br/>
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-0f172a?style=for-the-badge&logo=python&logoColor=fbbf24)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/api-FastAPI-1e293b?style=for-the-badge&logo=fastapi&logoColor=22d3ee)](https://fastapi.tiangolo.com/)
+[![Node.js 20+](https://img.shields.io/badge/node-20+-0f172a?style=for-the-badge&logo=nodedotjs&logoColor=68a063)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/typescript-5.x-1e293b?style=for-the-badge&logo=typescript&logoColor=3178c6)](https://www.typescriptlang.org/)
+[![Fastify](https://img.shields.io/badge/api-Fastify-1e293b?style=for-the-badge&logo=fastify&logoColor=000000)](https://fastify.dev/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-14532d?style=for-the-badge)](LICENSE)
 [![Status](https://img.shields.io/badge/status-active-166534?style=for-the-badge)](https://github.com/houseofasher/web-crawlers)
 
@@ -224,12 +225,12 @@ flowchart LR
 | Engine | Best for | Vendor inspiration | Install |
 |--------|----------|-------------------|---------|
 | `http` | Static pages, APIs, feeds | Scrapy · Colly | built-in |
-| `playwright` | SPAs, React, Vue, Next.js | Playwright · Puppeteer | `pip install -e ".[browser]"` |
+| `playwright` | SPAs, React, Vue, Next.js | Playwright · Puppeteer | `npx playwright install chromium` |
 | `archive` | Historical snapshots | Heritrix · Internet Archive | built-in |
-| `katana` | Fast link discovery | Katana · Colly | [Install Katana](https://github.com/projectdiscovery/katana) |
-| `splash` | JS render sidecar | Splash | run Splash on `:8050` |
-| `mechanical` | Forms, sessions | MechanicalSoup | `pip install -e ".[forms]"` |
-| `scrapy` | Batch spider projects | Scrapy · Portia | `pip install -e ".[scrapy]"` |
+| `katana` | Fast link discovery | Katana · Colly | [Install Katana](https://github.com/projectdiscovery/katana) (external) |
+| `splash` | JS render sidecar | Splash | run Splash on `:8050` (external) |
+| `mechanical` | Forms, sessions | MechanicalSoup | external adapter |
+| `scrapy` | Batch spider projects | Scrapy · Portia | external adapter |
 | `auto` | Smart routing (default) | Crawlee patterns | built-in |
 
 Reference vendor trees can be extracted locally — see [`vendors/README.md`](vendors/README.md).
@@ -244,11 +245,15 @@ Reference vendor trees can be extracted locally — see [`vendors/README.md`](ve
 git clone https://github.com/houseofasher/web-crawlers.git
 cd web-crawlers
 
-python -m venv .venv
-source .venv/bin/activate        # macOS / Linux
-# .venv\Scripts\activate         # Windows
+npm install
+npm run build
+```
 
-pip install -e .
+Link the CLI globally (optional):
+
+```bash
+npm link
+# or run via npm scripts: npm run dev -- crawl ...
 ```
 
 ### 2 · Crawl
@@ -264,11 +269,14 @@ omnispider crawl https://example.com --no-archive
 omnispider crawl https://example.com --js
 ```
 
-### 3 · Discover & archive
+### 3 · Topic lookup & archive
 
 ```bash
-# Fast URL discovery (sitemaps + Katana when installed)
-omnispider discover https://example.com --max 200
+# Find pages about a person/topic (use --seed for direct profile URLs)
+omnispider lookup "Asher Shepherd Newton Cape Coral Florida" \
+  --seed https://github.com/houseofasher \
+  --seed https://github.com/shep95 \
+  --json ./data/reports/lookup.json
 
 # List Wayback Machine snapshots for a URL
 omnispider archive https://example.com
@@ -284,10 +292,8 @@ omnispider serve --port 8080
 ### Optional power-ups
 
 ```bash
-pip install -e ".[browser]" && playwright install chromium   # JS rendering
-pip install -e ".[forms]"                                       # form crawling
-pip install -e ".[scrapy]"                                        # Scrapy adapter
-pip install -e ".[dev]" && pytest                               # run tests
+npx playwright install chromium   # JS rendering
+npm test                          # run Vitest suite
 ```
 
 ---
@@ -357,16 +363,17 @@ storage:
 
 ```
 web-crawlers/
-├── omnispider/
-│   ├── cli.py              # Typer CLI
-│   ├── api.py              # FastAPI server
+├── src/
+│   ├── cli.ts              # Commander CLI
+│   ├── api.ts              # Fastify REST server
 │   ├── core/
-│   │   ├── orchestrator.py # Main crawl loop
-│   │   ├── frontier.py     # URL queue (SQLite)
-│   │   ├── storage.py      # Jobs + pages persistence
-│   │   └── policy.py       # robots.txt + rate limits
-│   ├── engines/            # HTTP, Playwright, Archive, Katana…
-│   └── discovery/          # Sitemaps, link extraction
+│   │   ├── orchestrator.ts # Main crawl loop
+│   │   ├── storage.ts      # Jobs + pages persistence (SQLite)
+│   │   └── policy.ts       # robots.txt + rate limits
+│   ├── engines/            # HTTP, Playwright, Archive
+│   ├── discovery/          # Sitemaps, link extraction
+│   ├── security/           # Nomad Cyber stack
+│   └── topic/              # Topic-centric lookup
 ├── config/default.yaml
 ├── tests/
 └── vendors/                # Optional local reference trees
@@ -380,7 +387,7 @@ web-crawlers/
 |----------|----------|----------|
 | Job store | `./data/omnispider.db` | Jobs, frontier, page metadata |
 | HTML shards | `./data/content/` | SHA-256 sharded page bodies |
-| Logs | stdout (structlog) | Structured JSON-ish events |
+| Logs | stdout (pino) | Structured JSON logs |
 
 ---
 

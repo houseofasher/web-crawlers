@@ -12,18 +12,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.11"
+          node-version: "20"
+          cache: npm
 
       - name: Install
-        run: pip install -e ".[dev]"
+        run: npm ci
 
-      - name: Ruff lint
-        run: ruff check omnispider tests
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
 
       - name: Unit tests (incl. security)
-        run: pytest -q
+        run: npm test
 
       - name: SSRF guard smoke test
-        run: python -c "from omnispider.security.ssrf_guard import SSRFGuard; g=SSRFGuard(); assert not g.validate_url('http://127.0.0.1')[0]"
+        run: node --input-type=module -e "import { SSRFGuard } from './dist/security/nomad.js'; const g = new SSRFGuard({}); if (g.validateUrl('http://127.0.0.1/admin').ok) process.exit(1);"
