@@ -30,10 +30,14 @@ from omnispider.discovery.links import (
     discover_robots_sitemaps,
     discover_sitemap_urls,
     extract_links,
+    extract_links_with_text,
 )
 from omnispider.engines.registry import EngineRegistry
 from omnispider.security.audit_log import AuditEventType
 from omnispider.security.nomad_stack import NomadSecurityStack
+from omnispider.topic.profile import TopicProfile
+from omnispider.topic.scorer import score_link, score_page
+from omnispider.topic.seeds import extract_profile_urls_from_html
 
 log = structlog.get_logger()
 
@@ -319,6 +323,17 @@ class Orchestrator:
             content_path = save_content(self._storage.content_dir, entry.url, result.body)
 
         links = extract_links(html, result.final_url) if self._config.discovery.link_extraction else []
+
+        topic_profile = TopicProfile.parse(job.topic) if job.topic else None
+        topic_relevance = None
+        if topic_profile:
+            topic_relevance = score_page(
+                url=entry.url,
+                title=extract_title(html),
+                body=html,
+                profile=topic_profile,
+            )
+
         page = PageRecord(
             url=entry.url,
             final_url=result.final_url,
@@ -332,27 +347,76 @@ class Orchestrator:
             content_hash=digest,
             links_found=len(links),
             archive_timestamp=entry.archive_timestamp,
+            metadata={"topic_relevance": topic_relevance} if topic_relevance is not None else {},
         )
         await self._storage.save_page(job.id, page)
 
         if entry.depth < job.max_depth and entry.source == PageSource.LIVE:
-            safe_links: list[str] = []
-            if self._security:
-                for link in links[:200]:
-                    ok, _ = self._security.ssrf_guard.validate_url(link)
-                    if ok:
-                        safe_links.append(link)
-            else:
-                safe_links = links[:200]
-            child_entries = [
-                FrontierEntry(
-                    url=link,
-                    depth=entry.depth + 1,
-                    source=PageSource.LIVE,
-                    priority=50 - entry.depth,
+            child_entries: list[FrontierEntry] = []
+
+            if topic_profile and job.topic_follow_related:
+                profile_urls = extract_profile_urls_from_html(
+                    html, result.final_url, topic_profile
                 )
-                for link in safe_links
-            ]
-            await self._storage.enqueue_frontier(job.id, child_entries)
+                for link in profile_urls:
+                    if self._security:
+                        ok, _ = self._security.ssrf_guard.validate_url(link)
+                        if not ok:
+                            continue
+                    child_entries.append(
+                        FrontierEntry(
+                            url=link,
+                            depth=entry.depth + 1,
+                            source=PageSource.LIVE,
+                            priority=90 - entry.depth,
+                        )
+                    )
+
+                for link, anchor in extract_links_with_text(html, result.final_url):
+                    if self._security:
+                        ok, _ = self._security.ssrf_guard.validate_url(link)
+                        if not ok:
+                            continue
+                    link_score = score_link(link, anchor, topic_profile)
+                    min_score = job.topic_min_link_score
+                    if link_score < min_score:
+                        continue
+                    child_entries.append(
+                        FrontierEntry(
+                            url=link,
+                            depth=entry.depth + 1,
+                            source=PageSource.LIVE,
+                            priority=int(link_score * 100) - entry.depth,
+                        )
+                    )
+            else:
+                safe_links: list[str] = []
+                if self._security:
+                    for link in links[:200]:
+                        ok, _ = self._security.ssrf_guard.validate_url(link)
+                        if ok:
+                            safe_links.append(link)
+                else:
+                    safe_links = links[:200]
+                child_entries = [
+                    FrontierEntry(
+                        url=link,
+                        depth=entry.depth + 1,
+                        source=PageSource.LIVE,
+                        priority=50 - entry.depth,
+                    )
+                    for link in safe_links
+                ]
+
+            if child_entries:
+                child_entries.sort(key=lambda e: e.priority, reverse=True)
+                seen_urls: set[str] = set()
+                deduped: list[FrontierEntry] = []
+                for entry_item in child_entries:
+                    if entry_item.url in seen_urls:
+                        continue
+                    seen_urls.add(entry_item.url)
+                    deduped.append(entry_item)
+                await self._storage.enqueue_frontier(job.id, deduped[:250])
 
         return page

@@ -89,6 +89,47 @@ def crawl(
     _run_async(_main())
 
 
+@app.command("lookup")
+def lookup_cmd(
+    topic: str = typer.Argument(..., help="Person or topic to research"),
+    seed: Optional[list[str]] = typer.Option(
+        None, "--seed", "-s", help="Extra seed URLs (recommended for best results)"
+    ),
+    depth: int = typer.Option(2, "--depth", "-d"),
+    max_pages: int = typer.Option(40, "--max-pages", "-m"),
+    min_relevance: float = typer.Option(0.12, "--min-relevance"),
+    waves: int = typer.Option(2, "--waves", help="Follow-up crawl waves for discovered profiles"),
+    js: bool = typer.Option(False, "--js"),
+    json_out: Optional[Path] = typer.Option(None, "--json", help="Save JSON report path"),
+    config: Optional[Path] = typer.Option(None, "--config", "-c"),
+) -> None:
+    """Topic-centric lookup: find pages about a person/topic and follow related links."""
+    from omnispider.topic.lookup import TopicLookupOptions, TopicLookupService
+    from omnispider.topic.report import format_report_text, save_report
+
+    cfg = load_config(config)
+
+    async def _main() -> None:
+        security = build_security_stack(cfg) if cfg.security.enabled else None
+        service = TopicLookupService(cfg, security=security)
+        options = TopicLookupOptions(
+            topic=topic,
+            extra_seeds=list(seed or []),
+            max_depth=depth,
+            max_pages=max_pages,
+            min_relevance=min_relevance,
+            follow_waves=waves,
+            js_rendering=js,
+        )
+        report = await service.run(options)
+        typer.echo(format_report_text(report))
+        if json_out:
+            save_report(report, json_out)
+            typer.echo(f"\nJSON report saved to {json_out}")
+
+    _run_async(_main())
+
+
 @app.command("discover")
 def discover(
     url: str = typer.Argument(..., help="Seed URL for fast link discovery"),

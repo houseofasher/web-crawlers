@@ -44,6 +44,10 @@ class CrawlJobSpec(BaseModel):
     js_rendering: bool = False
     allowed_domains: list[str] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    topic: str | None = None
+    topic_min_link_score: float = 0.10
+    topic_min_relevance: float = 0.12
+    topic_follow_related: bool = False
 
 
 class CrawlJob(CrawlJobSpec):

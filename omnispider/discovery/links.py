@@ -128,6 +128,17 @@ def extract_links(html: str, base_url: str) -> list[str]:
     return list(dict.fromkeys(links))
 
 
+def extract_links_with_text(html: str, base_url: str) -> list[tuple[str, str]]:
+    soup = BeautifulSoup(html, "lxml")
+    pairs: list[tuple[str, str]] = []
+    for tag in soup.find_all("a", href=True):
+        absolute = absolute_url(base_url, tag["href"])
+        if absolute:
+            anchor = tag.get_text(" ", strip=True)
+            pairs.append((absolute, anchor))
+    return list(dict.fromkeys(pairs))
+
+
 def extract_feed_links(html: str, base_url: str) -> list[str]:
     soup = BeautifulSoup(html, "lxml")
     feeds: list[str] = []
