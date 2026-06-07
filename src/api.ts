@@ -6,7 +6,10 @@ import { Orchestrator } from "./core/orchestrator.js";
 import { buildSecurityStack } from "./security/nomad.js";
 import { handleChat } from "./chat/chat-service.js";
 import { pagesToLiveDocuments } from "./chat/live-data-policy.js";
+import { loadScribdKnowledge } from "./sources/scribd-service.js";
+import { scribdLoginHelp } from "./sources/scribd.js";
 import { formatReportText, runTopicLookup } from "./topic/index.js";
+import { augmentSeedsForQuestion } from "./chat/retrieval-ranker.js";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
@@ -137,6 +140,8 @@ export async function startApi(config: AppConfig, host: string, port: number): P
         maxDepth: body.maxDepth != null ? Number(body.maxDepth) : undefined,
         maxPages: body.maxPages != null ? Number(body.maxPages) : undefined,
         timeoutMs: body.timeoutMs != null ? Number(body.timeoutMs) : undefined,
+        includeScribd: body.includeScribd === true,
+        forceScribdSync: body.forceScribdSync === true,
       });
       return result;
     } catch (err) {
@@ -144,10 +149,37 @@ export async function startApi(config: AppConfig, host: string, port: number): P
       if (msg.startsWith("CRAWL_INCOMPLETE:")) {
         return reply.code(504).send({ error: "CRAWL_INCOMPLETE", status: msg.split(":")[1] });
       }
+      if (msg.startsWith("SCRIBD_")) {
+        return reply.code(msg.includes("AUTH") ? 401 : 400).send({
+          error: msg.split(" — ")[0],
+          detail: msg,
+          help: scribdLoginHelp(),
+        });
+      }
       if (msg.startsWith("LIVE_") || msg.startsWith("BLOCKED_")) {
         return reply.code(400).send({ error: msg.split(" — ")[0], detail: msg });
       }
       return reply.code(400).send({ error: msg });
+    }
+  });
+
+  /** Sync personal Scribd library (https://www.scribd.com/home) into local corpus. */
+  app.post<{ Body: Record<string, unknown> }>("/api/scribd/sync", async (req, reply) => {
+    try {
+      const result = await loadScribdKnowledge({ forceSync: req.body?.forceSync === true });
+      return {
+        synced: result.synced,
+        documentCount: result.documents.length,
+        syncedAt: result.corpus.syncedAt,
+        libraryUrl: result.corpus.libraryUrl,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return reply.code(msg.includes("AUTH") ? 401 : 400).send({
+        error: msg.split(" — ")[0],
+        detail: msg,
+        help: scribdLoginHelp(),
+      });
     }
   });
 
@@ -157,9 +189,11 @@ export async function startApi(config: AppConfig, host: string, port: number): P
     const topic = String(body.topic ?? body.question ?? "").trim();
     const domain = String(body.domain ?? "").trim();
     if (!topic) return reply.code(400).send({ error: "topic required" });
-    const seeds =
+    const seeds = augmentSeedsForQuestion(
       (body.seeds as string[] | undefined)?.filter(Boolean) ??
-      (domain ? resolveDomainSeeds(domain) : []);
+        (domain ? resolveDomainSeeds(domain) : []),
+      topic,
+    );
     if (!seeds.length) {
       return reply.code(400).send({ error: "seeds required (provide seeds or domain)" });
     }
@@ -173,10 +207,10 @@ export async function startApi(config: AppConfig, host: string, port: number): P
         maxDepth,
         maxPages,
         includeArchive: false,
-        includeSitemaps: body.includeSitemaps !== false,
+        includeSitemaps: false,
         jsRendering: !!body.jsRendering,
         topic,
-        topicFollowRelated: true,
+        topicFollowRelated: false,
         allowedDomains: allowedDomainsFromSeeds(seeds),
       });
       const finished = await orchestrator.waitForJob(job.id, { timeoutMs, pollMs });

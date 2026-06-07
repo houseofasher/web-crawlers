@@ -121,6 +121,7 @@ function scoreSentence(
   }
 
   if (EDUCATIONAL_HOST.test(doc.url)) score += 1;
+  if (/scribd\.com/i.test(doc.url)) score += 1.5;
   score += seedHostBoost(doc.url, seedHosts);
 
   return score;
@@ -166,6 +167,9 @@ export function augmentSeedsForQuestion(seeds: string[], question: string): stri
       const host = new URL(seed).hostname.replace(/^www\./, "").toLowerCase();
       if (host === "arxiv.org") out.add(`https://arxiv.org/search/?query=${query}&searchtype=all`);
       if (host === "paperswithcode.com") out.add(`https://paperswithcode.com/search?q=${query}`);
+      if (host.includes("pubmed.ncbi.nlm.nih.gov") || host === "pubmed.ncbi.nlm.nih.gov") {
+        out.add(`https://pubmed.ncbi.nlm.nih.gov/?term=${query}`);
+      }
       if (host.includes("britannica.com")) {
         out.add(`https://www.britannica.com/search?query=${query}`);
         for (const term of terms.slice(0, 2)) {
@@ -173,6 +177,12 @@ export function augmentSeedsForQuestion(seeds: string[], question: string): stri
           out.add(`https://www.britannica.com/science/${slug}`);
           out.add(`https://www.britannica.com/topic/${slug}`);
         }
+      }
+      if (host.includes("worldhistory.org")) {
+        out.add(`https://www.worldhistory.org/search/?q=${query}`);
+      }
+      if (host.includes("investopedia.com")) {
+        out.add(`https://www.investopedia.com/search?q=${query}`);
       }
       if (host.includes("wikipedia.org")) {
         const lang = host.split(".")[0];

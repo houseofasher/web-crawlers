@@ -44,6 +44,22 @@ science_and_natural_philosophy:
     - https://pubmed.ncbi.nlm.nih.gov/
     - https://www.britannica.com/
 
+psychology:
+  seeds:
+    - https://pubmed.ncbi.nlm.nih.gov/
+    - https://www.britannica.com/
+
+economics:
+  seeds:
+    - https://www.britannica.com/
+    - https://www.investopedia.com/
+
 default:
   seeds:
     - https://www.britannica.com/
+
+# Personal Scribd library — requires auth sync (omnispider scribd sync)
+scribd:
+  seeds:
+    - https://www.scribd.com/home
+    - https://www.scribd.com/saved

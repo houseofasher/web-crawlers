@@ -16,6 +16,8 @@ import { ArchiveEngine } from "./engines/registry.js";
 import { startApi } from "./api.js";
 import { handleChat, resetChatSessions } from "./chat/chat-service.js";
 import { createInterface } from "node:readline/promises";
+import { loadScribdKnowledge } from "./sources/scribd-service.js";
+import { scribdLoginHelp, interactiveScribdLogin } from "./sources/scribd.js";
 
 const program = new Command();
 
@@ -133,9 +135,11 @@ program
 
 program
   .command("chat")
-  .description("Algorithm chatbot — always crawls live web (never test files or archive data)")
-  .requiredOption("-d, --domain <slug>", "Aureon domain slug for whitelisted live seeds")
+  .description("Algorithm chatbot — live web and/or Scribd library corpus")
+  .requiredOption("-d, --domain <slug>", "Domain slug (use scribd for your Scribd library)")
   .option("-s, --seed <url...>", "Override with explicit https seed URLs")
+  .option("--include-scribd", "Merge synced Scribd library into any domain crawl")
+  .option("--force-scribd-sync", "Refresh Scribd library before chat")
   .option("-c, --config <path>", "Config path")
   .action(async (opts) => {
     const config = loadConfig(opts.config);
@@ -165,13 +169,19 @@ program
             sessionId,
             domain: opts.domain,
             seeds: opts.seed,
+            includeScribd: !!opts.includeScribd,
+            forceScribdSync: !!opts.forceScribdSync,
           });
           sessionId = result.sessionId;
           console.log(`Bot [${result.mode}]: ${result.reply}`);
           if (result.sources.length) {
             console.log(`     Source: ${result.sources[0].title} — ${result.sources[0].url}`);
           }
-          console.log(`     Live pages: ${result.livePageCount} | ${result.disclaimer}\n`);
+          const scribdNote =
+            result.scribdDocumentCount != null && result.scribdDocumentCount > 0
+              ? ` | Scribd docs: ${result.scribdDocumentCount}${result.scribdSynced ? " (synced)" : ""}`
+              : "";
+          console.log(`     Corpus: ${result.livePageCount}${scribdNote} | ${result.disclaimer}\n`);
         } catch (err) {
           console.error(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
         }
@@ -180,6 +190,45 @@ program
       rl.close();
       orchestrator.shutdown();
     }
+  });
+
+const scribd = program.command("scribd").description("Scribd library sync (https://www.scribd.com/home)");
+
+scribd
+  .command("login")
+  .description("Open browser to log in to Scribd and save session (easiest setup)")
+  .action(async () => {
+    try {
+      await interactiveScribdLogin();
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  });
+
+scribd
+  .command("sync")
+  .description("Sync your logged-in Scribd library and PDF/text imports into ./data/scribd/corpus.json")
+  .option("--force", "Force refresh even if corpus is fresh")
+  .action(async (opts) => {
+    try {
+      const result = await loadScribdKnowledge({ forceSync: !!opts.force });
+      console.log(`Scribd sync complete: ${result.documents.length} documents`);
+      console.log(`  Library: ${result.corpus.libraryUrl}`);
+      console.log(`  Corpus:  ./data/scribd/corpus.json`);
+      console.log(`  Imports: ./data/scribd/import/ (.txt / .md)`);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      console.error("\n" + scribdLoginHelp());
+      process.exit(1);
+    }
+  });
+
+scribd
+  .command("login-help")
+  .description("Show how to connect your Scribd account")
+  .action(() => {
+    console.log(scribdLoginHelp());
   });
 
 program

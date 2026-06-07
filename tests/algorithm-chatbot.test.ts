@@ -97,7 +97,7 @@ describe("algorithm-chatbot", () => {
     const docs = [
       LIVE_DOC(
         "https://arxiv.org/abs/1234",
-        "Supervised machine learning uses labeled examples to tune weights. " +
+        "Supervised machine learning is a method that uses labeled examples to tune weights. " +
           "Backpropagation adjusts neural network weights until predictions match labels.",
       ),
     ];

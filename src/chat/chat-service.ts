@@ -11,6 +11,7 @@ import {
 } from "./algorithm-chatbot.js";
 import { augmentSeedsForQuestion } from "./retrieval-ranker.js";
 import { assertLiveSeeds, pagesToLiveDocuments } from "./live-data-policy.js";
+import { isScribdDomain, loadScribdKnowledge } from "../sources/scribd-service.js";
 
 const sessions = new Map<string, ChatSession>();
 
@@ -22,6 +23,9 @@ export interface ChatRequest {
   maxDepth?: number;
   maxPages?: number;
   timeoutMs?: number;
+  /** Merge synced Scribd library corpus into retrieval. */
+  includeScribd?: boolean;
+  forceScribdSync?: boolean;
 }
 
 export interface ChatResponse extends ChatReply {
@@ -29,6 +33,8 @@ export interface ChatResponse extends ChatReply {
   crawled: boolean;
   jobId?: string;
   livePageCount: number;
+  scribdDocumentCount?: number;
+  scribdSynced?: boolean;
 }
 
 function getOrCreateSession(sessionId?: string): ChatSession {
@@ -50,7 +56,7 @@ function resolveLiveSeeds(req: ChatRequest): string[] {
 async function crawlLiveDocuments(
   orchestrator: Orchestrator,
   req: ChatRequest,
-): Promise<{ documents: ChatDocument[]; jobId: string; seeds: string[] }> {
+): Promise<{ documents: ChatDocument[]; jobId?: string; seeds: string[] }> {
   const topic = req.message.trim();
   const seeds = augmentSeedsForQuestion(resolveLiveSeeds(req), topic);
 
@@ -82,6 +88,57 @@ async function crawlLiveDocuments(
   return { documents, jobId: job.id, seeds };
 }
 
+async function resolveChatDocuments(
+  orchestrator: Orchestrator,
+  req: ChatRequest,
+): Promise<{
+  documents: ChatDocument[];
+  seeds: string[];
+  jobId?: string;
+  scribdDocumentCount: number;
+  scribdSynced: boolean;
+  crawled: boolean;
+}> {
+  const useScribdOnly = isScribdDomain(req.domain);
+  const mergeScribd = useScribdOnly || req.includeScribd === true;
+
+  let scribdDocs: ChatDocument[] = [];
+  let scribdSynced = false;
+  if (mergeScribd) {
+    const scribd = await loadScribdKnowledge({ forceSync: req.forceScribdSync });
+    scribdDocs = scribd.documents;
+    scribdSynced = scribd.synced;
+  }
+
+  if (useScribdOnly) {
+    if (!scribdDocs.length) {
+      throw new Error("SCRIBD_EMPTY — sync your library first: omnispider scribd sync");
+    }
+    return {
+      documents: scribdDocs,
+      seeds: [resolveDomainSeeds("scribd")[0] ?? "https://www.scribd.com/home"],
+      scribdDocumentCount: scribdDocs.length,
+      scribdSynced,
+      crawled: false,
+    };
+  }
+
+  const crawled = await crawlLiveDocuments(orchestrator, req);
+  const documents = [...scribdDocs, ...crawled.documents];
+  if (!documents.length) {
+    throw new Error("LIVE_DATA_REQUIRED — no documents from crawl or Scribd corpus");
+  }
+
+  return {
+    documents,
+    seeds: crawled.seeds,
+    jobId: crawled.jobId,
+    scribdDocumentCount: scribdDocs.length,
+    scribdSynced,
+    crawled: true,
+  };
+}
+
 export async function handleChat(
   _config: AppConfig,
   orchestrator: Orchestrator,
@@ -91,17 +148,19 @@ export async function handleChat(
   if (!message) throw new Error("message required");
 
   const session = getOrCreateSession(req.sessionId);
-  const { documents, jobId, seeds } = await crawlLiveDocuments(orchestrator, req);
+  const resolved = await resolveChatDocuments(orchestrator, req);
 
-  const reply = respondAlgorithm(session, message, documents, seeds);
+  const reply = respondAlgorithm(session, message, resolved.documents, resolved.seeds);
   sessions.set(reply.session.id, reply.session);
 
   return {
     ...reply,
     sessionId: reply.session.id,
-    crawled: true,
-    jobId,
-    livePageCount: documents.length,
+    crawled: resolved.crawled,
+    jobId: resolved.jobId,
+    livePageCount: resolved.documents.length,
+    scribdDocumentCount: resolved.scribdDocumentCount,
+    scribdSynced: resolved.scribdSynced,
   };
 }
 
