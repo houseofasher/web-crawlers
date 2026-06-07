@@ -9,7 +9,7 @@ import {
   type ChatReply,
   type ChatSession,
 } from "./algorithm-chatbot.js";
-import { augmentSeedsForQuestion } from "./retrieval-ranker.js";
+import { prioritizeSeedsForQuestion } from "./retrieval-ranker.js";
 import { assertLiveSeeds, pagesToLiveDocuments } from "./live-data-policy.js";
 import { isScribdDomain, loadScribdKnowledge } from "../sources/scribd-service.js";
 
@@ -58,7 +58,7 @@ async function crawlLiveDocuments(
   req: ChatRequest,
 ): Promise<{ documents: ChatDocument[]; jobId?: string; seeds: string[] }> {
   const topic = req.message.trim();
-  const seeds = augmentSeedsForQuestion(resolveLiveSeeds(req), topic);
+  const seeds = prioritizeSeedsForQuestion(resolveLiveSeeds(req), topic);
 
   const timeoutMs = req.timeoutMs ?? 120_000;
   const pollMs = 1500;

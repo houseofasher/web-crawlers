@@ -195,3 +195,19 @@ export function augmentSeedsForQuestion(seeds: string[], question: string): stri
 
   return [...out];
 }
+
+/** Topic search URLs first — encyclopedia hits before broad site roots. */
+export function prioritizeSeedsForQuestion(seeds: string[], question: string): string[] {
+  const augmented = augmentSeedsForQuestion(seeds, question);
+  const searchFirst: string[] = [];
+  const rest: string[] = [];
+  for (const url of augmented) {
+    const lower = url.toLowerCase();
+    if (lower.includes("search?") || lower.includes("search/") || lower.includes("/topic/") || lower.includes("/science/")) {
+      searchFirst.push(url);
+    } else {
+      rest.push(url);
+    }
+  }
+  return [...searchFirst, ...rest];
+}

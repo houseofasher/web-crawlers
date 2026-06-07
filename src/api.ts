@@ -9,7 +9,7 @@ import { pagesToLiveDocuments } from "./chat/live-data-policy.js";
 import { loadScribdKnowledge } from "./sources/scribd-service.js";
 import { scribdLoginHelp } from "./sources/scribd.js";
 import { formatReportText, runTopicLookup } from "./topic/index.js";
-import { augmentSeedsForQuestion } from "./chat/retrieval-ranker.js";
+import { augmentSeedsForQuestion, prioritizeSeedsForQuestion } from "./chat/retrieval-ranker.js";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
@@ -189,7 +189,7 @@ export async function startApi(config: AppConfig, host: string, port: number): P
     const topic = String(body.topic ?? body.question ?? "").trim();
     const domain = String(body.domain ?? "").trim();
     if (!topic) return reply.code(400).send({ error: "topic required" });
-    const seeds = augmentSeedsForQuestion(
+    const seeds = prioritizeSeedsForQuestion(
       (body.seeds as string[] | undefined)?.filter(Boolean) ??
         (domain ? resolveDomainSeeds(domain) : []),
       topic,

@@ -20,7 +20,6 @@ artificial_intelligence:
 computer_science:
   seeds:
     - https://www.britannica.com/
-    - https://arxiv.org/
 
 biology:
   seeds:
